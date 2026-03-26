@@ -1,0 +1,29 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t iragielis/customerpayments:latest .
+          docker tag iragielis/customerpayments:latest iragielis/customerpayments:v1
+
+      - name: Push Docker image
+        run: |
+          docker push iragielis/customerpayments:latest
+          docker push iragielis/customerpayments:v1
