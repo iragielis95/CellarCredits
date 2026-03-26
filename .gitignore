@@ -1,0 +1,66 @@
+# ==========================
+# Python & Virtual Env
+# ==========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+.venv/
+venv/
+env/
+ENV/
+
+# ==========================
+# Streamlit Local Secrets
+# (never commit secrets.toml)
+# ==========================
+.streamlit/secrets.toml
+.streamlit/
+
+# ==========================
+# Local Databases
+# ==========================
+*.db
+*.backup.db
+payments.db
+payments.backup.db
+
+# ==========================
+# Migration Script (contains service role logic)
+# ==========================
+migrate_sqlite_to_supabase.py
+
+# ==========================
+# OS and Editor Files
+# ==========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ==========================
+# Log files
+# ==========================
+*.log
+
+# ==========================
+# Docker
+# ==========================
+.dockerignore
+docker-compose.yml
+docker-compose.yaml
+
+# ==========================
+# GitHub Workflows (optional)
+# Remove this if you WANT to commit workflows
+# ==========================
+# .github/
+
+# ==========================
+# Build / Distribution
+# ==========================
+build/
+dist/
+*.egg-info/
