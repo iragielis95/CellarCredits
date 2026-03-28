@@ -11,20 +11,20 @@ from supabase import create_client, Client
 import streamlit_authenticator as stauth
 
 # -------------------------
-# STREAMLIT LOGIN (FIXED)
+# STREAMLIT LOGIN (FINAL WORKING VERSION)
 # -------------------------
-# ✅ 1. Build credentials dict (this is the NEW API)
+# ✅ 1. Credentials dict (required for newer versions)
 credentials = {
     "usernames": {
         "iragielis": {
-            "email": "ira@wine-logistics.com",
+            "email": "ira@example.com",
             "name": "Ira Gielis",
-            "password": stauth.Hasher().hash("Toulouse@95"),  # ✅ correct hashing
+            "password": stauth.Hasher().hash("Toulouse@95"),
         }
     }
 }
 
-# ✅ 2. Create authenticator (NEW API: pass EVERYTHING by keyword)
+# ✅ 2. Authenticator instance (ALL KEYWORD ARGUMENTS)
 authenticator = stauth.Authenticate(
     credentials=credentials,
     cookie_name="cellarcredits_cookie",
@@ -32,8 +32,11 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
-# ✅ 3. Login widget
-name, auth_status, username = authenticator.login("Login", "main")
+# ✅ 3. Login widget (use keyword for location!)
+name, auth_status, username = authenticator.login(
+    form_name="Login",
+    location="main"
+)
 
 # ✅ 4. Protect your app
 if auth_status:
