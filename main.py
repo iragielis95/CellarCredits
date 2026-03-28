@@ -16,7 +16,7 @@ usernames = ["iragielis"]
 passwords = ["Toulouse@95"]  # You will replace this with hashed version!
 
 # --- 2. Hash passwords ---
-hashed_passwords = stauth.Hasher(passwords).generate()
+hashed_passwords = stauth.Hasher().hash(passwords)
 
 # --- 3. Create authenticator ---
 authenticator = stauth.Authenticate(
