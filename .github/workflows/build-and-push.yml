@@ -23,9 +23,9 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t iragielis/customerpayments:latest .
-          docker tag iragielis/customerpayments:latest iragielis/customerpayments:v1
+          docker tag iragielis/customerpayments:latest iragielis/customerpayments:v2
 
       - name: Push Docker image
         run: |
           docker push iragielis/customerpayments:latest
-          docker push iragielis/customerpayments:v1
+          docker push iragielis/customerpayments:v2
