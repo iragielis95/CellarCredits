@@ -8,7 +8,42 @@ import pandas as pd
 import streamlit as st
 from openpyxl.utils import get_column_letter
 from supabase import create_client, Client
+import streamlit_authenticator as stauth
 
+# --- 1. Define users ---
+names = ["Ira Gielis"]
+usernames = ["iragielis"]
+passwords = ["Toulouse@95"]  # You will replace this with hashed version!
+
+# --- 2. Hash passwords ---
+hashed_passwords = stauth.Hasher(passwords).generate()
+
+# --- 3. Create authenticator ---
+authenticator = stauth.Authenticate(
+    names,
+    usernames,
+    hashed_passwords,
+    "cellarcredits_cookie",    # cookie name
+    "abcdef123456",            # signature key (any random string)
+    cookie_expiry_days=1
+)
+
+# --- 4. Create login form ---
+name, auth_status, username = authenticator.login("Login", "main")
+
+# --- 5. Protect your app ---
+if auth_status:
+    authenticator.logout("Logout", "sidebar")
+    st.write(f"Welcome, *{name}*!")
+    # -------------------------
+    #   PLACE YOUR APP HERE
+    # -------------------------
+
+elif auth_status == False:
+    st.error("Incorrect username or password")
+elif auth_status == None:
+    st.warning("Please enter your username and password")
+``
 # -----------------------------------------------------------------------------
 # Streamlit Config
 # -----------------------------------------------------------------------------
