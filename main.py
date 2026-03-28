@@ -1,72 +1,89 @@
+import streamlit as st
+import streamlit_authenticator as stauth
+
+# ------------------------------------------------------------
+# ✅ STREAMLIT PAGE SETUP
+# ------------------------------------------------------------
+st.set_page_config(page_title="WLI Cellar Credits", layout="wide")
+st.title("WLI Cellar Credits")
+st.caption("Track payments received per vineyard...")
+
+DEBUG = False
+
+# ------------------------------------------------------------
+# ✅ LOGIN CONFIG
+# These are the allowed credentials.
+# The user still has to type them in the login form.
+# ------------------------------------------------------------
+credentials = {
+    "usernames": {
+        st.secrets["auth"]["username"]: {
+            "name": "Ira Gielis",
+            "password": st.secrets["auth"]["password"],
+        }
+    }
+}
+
+authenticator = stauth.Authenticate(
+    credentials=credentials,
+    cookie_name="cellarcredits_cookie",
+    cookie_key="abcdef123456",
+    cookie_expiry_days=1,
+)
+
+fields = {
+    "Form name": "Login",
+    "Username": "Username",
+    "Password": "Password",
+    "Login": "Log in",
+}
+
+# ------------------------------------------------------------
+# ✅ SHOW LOGIN FORM
+# ------------------------------------------------------------
+try:
+    authenticator.login(location="main", fields=fields, key="MyLoginForm")
+except Exception as e:
+    st.error(f"Login widget failed: {e}")
+    st.stop()
+
+# ------------------------------------------------------------
+# ✅ CHECK LOGIN STATE
+# ------------------------------------------------------------
+auth_status = st.session_state.get("authentication_status")
+name = st.session_state.get("name")
+
+if auth_status is False:
+    st.error("Incorrect username or password")
+    st.stop()
+
+if auth_status is None:
+    st.warning("Please log in")
+    st.stop()
+
+# ------------------------------------------------------------
+# ✅ AFTER SUCCESSFUL LOGIN
+# ------------------------------------------------------------
+authenticator.logout("Logout", "sidebar")
+st.success(f"Welcome, {name}!")
+# ------------------------------------------------------------
+# ✅ NOW SAFE TO IMPORT EVERYTHING ELSE
+# ------------------------------------------------------------
 import io
 import os
 import hashlib
 from datetime import date
 from functools import lru_cache
-
 import pandas as pd
-import streamlit as st
 from openpyxl.utils import get_column_letter
-from supabase import create_client, Client
-import streamlit_authenticator as stauth
+from supabase import create_client, Client  # ✅ NOW it's safe to import
 
-# -------------------------
-# STREAMLIT LOGIN (FINAL WORKING VERSION)
-# -------------------------
-# ✅ 1. Credentials dict (required for newer versions)
-credentials = {
-    "usernames": {
-        "iragielis": {
-            "email": "ira@example.com",
-            "name": "Ira Gielis",
-            "password": stauth.Hasher().hash("Toulouse@95"),
-        }
-    }
-}
+# ✅ continue with the rest of your app below...
+# ------------------------------------------------------------
+# CONFIG / SUPABASE SETUP
+# ------------------------------------------------------------
 
-# ✅ 2. Authenticator instance (ALL KEYWORD ARGUMENTS)
-authenticator = stauth.Authenticate(
-    credentials=credentials,
-    cookie_name="cellarcredits_cookie",
-    key="abcdef123456",
-    cookie_expiry_days=1,
-)
-
-# ✅ 3. Login widget (use keyword for location!)
-name, auth_status, username = authenticator.login(
-    form_name="Login",
-    location="main"
-)
-
-# ✅ 4. Protect your app
-if auth_status:
-    authenticator.logout("Logout", "sidebar")
-    st.write(f"Welcome, *{name}*!")
-
-elif auth_status == False:
-    st.error("Incorrect username or password")
-
-else:
-    st.warning("Please enter your username and password")
-# -----------------------------------------------------------------------------
-# Streamlit Config
-# -----------------------------------------------------------------------------
-st.set_page_config(page_title="WLI Cellar Credits", layout="wide")
-st.title("WLI Cellar Credits")
-st.caption(
-    "Track payments received per vineyard, transfers to vineyards, "
-    "monthly invoice deductions, and corrections."
-)
-
-DEBUG = st.sidebar.checkbox("Debug mode", value=False)
-
-# -----------------------------------------------------------------------------
-# Config / Supabase
-# -----------------------------------------------------------------------------
 def _get_secret(path: list[str], default=None):
-    """
-    Safely read nested Streamlit secrets, e.g. ["supabase", "url"].
-    """
     current = st.secrets
     try:
         for key in path:
@@ -75,19 +92,12 @@ def _get_secret(path: list[str], default=None):
     except Exception:
         return default
 
-
 @lru_cache(maxsize=1)
 def get_supabase() -> Client:
-    """
-    Supports both:
-    - Azure / generic hosting via environment variables
-    - Streamlit Cloud / local via st.secrets
-    """
     url = (
         os.environ.get("SUPABASE_URL")
         or _get_secret(["supabase", "url"])
     )
-
     key = (
         os.environ.get("SUPABASE_PUBLISHABLE_KEY")
         or os.environ.get("SUPABASE_ANON_KEY")
@@ -96,37 +106,29 @@ def get_supabase() -> Client:
         or _get_secret(["supabase", "anon_key"])
         or _get_secret(["supabase", "key"])
     )
-
     if not url:
-        raise ValueError("Missing Supabase URL. Set SUPABASE_URL or st.secrets['supabase']['url'].")
+        raise ValueError("Missing Supabase URL.")
     if not key:
-        raise ValueError(
-            "Missing Supabase key. Set SUPABASE_PUBLISHABLE_KEY / SUPABASE_ANON_KEY / SUPABASE_KEY "
-            "or the equivalent in st.secrets."
-        )
-
+        raise ValueError("Missing Supabase key.")
     return create_client(url, key)
-
 
 try:
     supabase = get_supabase()
-    # Small health check
     supabase.table("vineyards").select("id").limit(1).execute()
-    if DEBUG:
-        st.success("✅ Connected to Supabase")
+
 except Exception as e:
     st.error(f"Supabase setup/connection failed: {e}")
     st.stop()
 
-# -----------------------------------------------------------------------------
-# Helpers (presentation/Excel)
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# HELPERS
+# ------------------------------------------------------------
+
 def format_date_eu(d) -> str:
     dt = pd.to_datetime(d, errors="coerce")
     if pd.isna(dt):
         return str(d)
     return dt.strftime("%d-%m-%Y")
-
 
 def autosize_worksheet(ws, max_width: int = 60, min_width: int = 10):
     for col_cells in ws.columns:
@@ -138,7 +140,6 @@ def autosize_worksheet(ws, max_width: int = 60, min_width: int = 10):
             max_len = max(max_len, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = max(min_width, min(max_width, max_len + 2))
 
-
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Sheet1") -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -148,46 +149,36 @@ def df_to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Sheet1") -> bytes:
         autosize_worksheet(ws)
     return output.getvalue()
 
-
 def format_money(x: float, currency="EUR") -> str:
     return f"{currency} {x:,.2f}"
-
 
 def sanitize_excel_sheet_name(name: str) -> str:
     cleaned = "".join(ch for ch in str(name) if ch not in r'[]:*?/\\')
     cleaned = cleaned.strip()[:31]
     return cleaned or "Sheet"
 
+# ------------------------------------------------------------
+# BUSINESS CONSTANTS & HELPERS
+# ------------------------------------------------------------
 
-# -----------------------------------------------------------------------------
-# Domain helpers
-# -----------------------------------------------------------------------------
 KIND_LABELS = {
     "PAYMENT": "Payment received",
     "TRANSFER": "Transfer to vineyard",
     "INVOICE": "Monthly invoice (deduction)",
     "CORRECTION": "Correction",
 }
-LABEL_TO_KIND = {v: k for k, v in KIND_LABELS.items()}
-KIND_ORDER = ["PAYMENT", "TRANSFER", "INVOICE", "CORRECTION"]
-CURRENCIES = ["EUR", "GBP", "USD"]
 
+LABEL_TO_KIND = {v: k for k, v in KIND_LABELS.items()}
 
 def to_cents(amount: float) -> int:
     return int(round(float(amount) * 100))
 
-
 def from_cents(cents: int) -> float:
     return int(cents) / 100.0
 
-
 def signed_amount(kind: str, amount_cents: int) -> float:
-    """
-    Signed value according to your business rules.
-    """
     k = (kind or "").upper()
     amt = from_cents(amount_cents)
-
     if k == "PAYMENT":
         return abs(amt)
     if k in ("TRANSFER", "INVOICE"):
@@ -196,56 +187,9 @@ def signed_amount(kind: str, amount_cents: int) -> float:
         return amt
     return 0.0
 
-
-def compute_row_hash(
-    vineyard_name: str,
-    payer: str,
-    txn_date: str,
-    kind: str,
-    amount_cents: int,
-    reference: str | None
-) -> str:
-    v = (vineyard_name or "").strip()
-    p = (payer or "").strip()
-    k = (kind or "").strip().upper()
-    dt = pd.to_datetime(txn_date, errors="coerce")
-    d = dt.date().isoformat() if pd.notna(dt) else str(txn_date).strip()
-    ref = (reference or "").strip()
-    raw = f"{v}|{p}|{d}|{k}|{int(amount_cents)}|{ref}".encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
-
-# -----------------------------------------------------------------------------
-# Supabase data helpers
-# -----------------------------------------------------------------------------
-def fetch_customers_df() -> pd.DataFrame:
-    try:
-        res = (
-            supabase.table("customers")
-            .select("id, name, credits, created_at")
-            .order("created_at", desc=False)
-            .execute()
-        )
-        return pd.DataFrame(res.data or [])
-    except Exception as e:
-        st.error(f"Failed to fetch customers: {e}")
-        return pd.DataFrame()
-
-
-def insert_customer(name: str, credits: int):
-    return supabase.table("customers").insert(
-        {"name": name.strip(), "credits": int(credits)}
-    ).execute()
-
-
-def update_customer_credits(cust_id: str, credits: int):
-    return supabase.table("customers").update(
-        {"credits": int(credits)}
-    ).eq("id", cust_id).execute()
-
-
-def delete_customer_by_id(cust_id: str):
-    return supabase.table("customers").delete().eq("id", cust_id).execute()
-
+# ------------------------------------------------------------
+# SUPABASE DATA ACCESS
+# ------------------------------------------------------------
 
 def fetch_vineyards_df() -> pd.DataFrame:
     try:
@@ -255,30 +199,24 @@ def fetch_vineyards_df() -> pd.DataFrame:
         st.error(f"Failed to fetch vineyards: {e}")
         return pd.DataFrame()
 
-
 def get_or_create_vineyard_id(name: str) -> str:
     name = (name or "").strip()
     if not name:
         raise ValueError("Empty vineyard name")
-
     res = supabase.table("vineyards").select("id").eq("name", name).limit(1).execute()
     if res.data:
         return res.data[0]["id"]
-
     supabase.table("vineyards").insert({"name": name}).execute()
-
     res2 = supabase.table("vineyards").select("id").eq("name", name).limit(1).execute()
     if not res2.data:
         raise RuntimeError("Failed to create vineyard")
     return res2.data[0]["id"]
-
 
 def delete_vineyard_by_id(vineyard_id: str):
     tx = supabase.table("transactions").select("id").eq("vineyard_id", vineyard_id).limit(1).execute()
     if tx.data:
         raise ValueError("Cannot delete: vineyard has transactions.")
     return supabase.table("vineyards").delete().eq("id", vineyard_id).execute()
-
 
 def fetch_transactions_df(vineyard_id: str | None = None, payer: str | None = None) -> pd.DataFrame:
     try:
@@ -287,7 +225,6 @@ def fetch_transactions_df(vineyard_id: str | None = None, payer: str | None = No
             q = q.eq("vineyard_id", vineyard_id)
         if payer and payer != "(All)":
             q = q.eq("payer", payer)
-
         q = q.order("txn_date", desc=False).order("created_at", desc=False)
         res = q.execute()
         return pd.DataFrame(res.data or [])
@@ -295,16 +232,7 @@ def fetch_transactions_df(vineyard_id: str | None = None, payer: str | None = No
         st.error(f"Failed to fetch transactions: {e}")
         return pd.DataFrame()
 
-
-def insert_transaction(
-    vineyard_id: str,
-    payer: str,
-    txn_date,
-    kind: str,
-    amount_cents: int,
-    reference: str | None,
-    import_hash: str | None = None,
-):
+def insert_transaction(vineyard_id, payer, txn_date, kind, amount_cents, reference, import_hash=None):
     payload = {
         "vineyard_id": vineyard_id,
         "payer": payer.strip(),
@@ -315,19 +243,9 @@ def insert_transaction(
     }
     if import_hash:
         payload["import_hash"] = import_hash
-
     return supabase.table("transactions").insert(payload).execute()
 
-
-def update_transaction(
-    txn_id: str,
-    vineyard_id: str,
-    payer: str,
-    txn_date,
-    kind: str,
-    amount_cents: int,
-    reference: str | None,
-):
+def update_transaction(txn_id, vineyard_id, payer, txn_date, kind, amount_cents, reference):
     payload = {
         "vineyard_id": vineyard_id,
         "payer": payer.strip(),
@@ -338,29 +256,19 @@ def update_transaction(
     }
     return supabase.table("transactions").update(payload).eq("id", txn_id).execute()
 
-
-def delete_transaction_by_id(txn_id: str):
+def delete_transaction_by_id(txn_id):
     return supabase.table("transactions").delete().eq("id", txn_id).execute()
 
-# -----------------------------------------------------------------------------
-# Derivations
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# DERIVATIONS
+# ------------------------------------------------------------
+
 def add_running_balance(df_tx: pd.DataFrame, df_v: pd.DataFrame) -> pd.DataFrame:
-    """
-    Adds:
-    - vineyard name
-    - date
-    - amount (unsigned except correction, which keeps sign)
-    - type
-    - signed_amount
-    - balance_after
-    """
     if df_tx.empty:
         return df_tx.copy()
 
     out = df_tx.copy()
-
-    vmap = dict(zip(df_v["id"], df_v["name"])) if not df_v.empty and {"id", "name"}.issubset(df_v.columns) else {}
+    vmap = dict(zip(df_v["id"], df_v["name"])) if not df_v.empty else {}
     out["vineyard"] = out["vineyard_id"].map(vmap).fillna("(Unknown vineyard)")
     out["date"] = pd.to_datetime(out["txn_date"], errors="coerce").dt.date
 
@@ -377,20 +285,20 @@ def add_running_balance(df_tx: pd.DataFrame, df_v: pd.DataFrame) -> pd.DataFrame
 
     work = out.copy()
     work["_dt"] = pd.to_datetime(work["txn_date"], errors="coerce")
+
     sort_cols = ["vineyard", "_dt"]
     if "created_at" in work.columns:
         sort_cols.append("created_at")
+
     work = work.sort_values(sort_cols, ascending=True)
     work["balance_after"] = work.groupby("vineyard")["signed_amount"].cumsum()
 
     out = out.merge(work[["id", "balance_after"]], on="id", how="left")
     return out
 
-
 def balances_by_vineyard(df_aug: pd.DataFrame) -> pd.DataFrame:
     if df_aug.empty:
         return pd.DataFrame(columns=["vineyard", "balance"])
-
     return (
         df_aug.groupby("vineyard", as_index=False)["signed_amount"]
         .sum()
@@ -398,94 +306,46 @@ def balances_by_vineyard(df_aug: pd.DataFrame) -> pd.DataFrame:
         .sort_values("vineyard")
     )
 
+# ------------------------------------------------------------
+# SIDEBAR
+# ------------------------------------------------------------
 
-def vineyards_workbook_bytes(df_all: pd.DataFrame, currency_label: str = "EUR") -> bytes:
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        if df_all.empty:
-            pd.DataFrame(columns=["vineyard", "balance"]).to_excel(writer, index=False, sheet_name="Summary")
-            ws = writer.book["Summary"]
-            ws.freeze_panes = "A2"
-            autosize_worksheet(ws)
-            return output.getvalue()
-
-        summary = balances_by_vineyard(df_all).copy()
-        summary = summary.rename(columns={"balance": f"balance ({currency_label})"})
-        summary.to_excel(writer, index=False, sheet_name="Summary")
-        ws_sum = writer.book["Summary"]
-        ws_sum.freeze_panes = "A2"
-        autosize_worksheet(ws_sum)
-
-        for vineyard, vdf in df_all.groupby("vineyard"):
-            cols = ["txn_date", "payer", "reference", "type", "amount", "signed_amount", "balance_after"]
-            available_cols = [c for c in cols if c in vdf.columns]
-            sheet_df = vdf.sort_values(
-                [c for c in ["txn_date", "created_at"] if c in vdf.columns],
-                ascending=True
-            )[available_cols].copy()
-
-            sheet_df = sheet_df.rename(
-                columns={
-                    "txn_date": "date",
-                    "amount": f"amount ({currency_label})",
-                    "signed_amount": f"signed amount ({currency_label})",
-                    "balance_after": f"balance after ({currency_label})",
-                }
-            )
-
-            if "date" in sheet_df.columns:
-                sheet_df["date"] = sheet_df["date"].apply(format_date_eu)
-
-            safe_name = sanitize_excel_sheet_name(vineyard)
-            sheet_df.to_excel(writer, index=False, sheet_name=safe_name)
-            ws = writer.book[safe_name]
-            ws.freeze_panes = "A2"
-            autosize_worksheet(ws)
-
-    return output.getvalue()
-
-# -----------------------------------------------------------------------------
-# Sidebar: Settings, Filters, Vineyard manager
-# -----------------------------------------------------------------------------
 st.sidebar.header("Settings")
+CURRENCIES = ["EUR", "GBP", "USD"]
 currency = st.sidebar.selectbox("Currency label", CURRENCIES, index=0)
 
 df_vineyards = fetch_vineyards_df()
-vineyard_names = df_vineyards["name"].tolist() if not df_vineyards.empty and "name" in df_vineyards.columns else []
+vineyard_names = df_vineyards["name"].tolist() if not df_vineyards.empty else []
 
 df_tx_all = fetch_transactions_df(None, None)
-all_payers = sorted(df_tx_all["payer"].dropna().unique().tolist()) if not df_tx_all.empty and "payer" in df_tx_all.columns else []
+all_payers = sorted(df_tx_all["payer"].dropna().unique().tolist()) if not df_tx_all.empty else []
 
 st.sidebar.markdown("---")
 selected_vineyard_name = st.sidebar.selectbox("Filter by vineyard", ["(All)"] + vineyard_names)
 selected_payer = st.sidebar.selectbox("Filter by payer", ["(All)"] + all_payers)
-
 st.sidebar.markdown("---")
-st.sidebar.subheader("Vineyards")
 
+# Add vineyard
+st.sidebar.subheader("Vineyards")
 new_vineyard = st.sidebar.text_input("Add new vineyard", placeholder="e.g. Château Example")
 if st.sidebar.button("Add vineyard"):
-    if not new_vineyard.strip():
-        st.sidebar.error("Enter a vineyard name.")
-    else:
-        try:
-            get_or_create_vineyard_id(new_vineyard.strip())
-            st.sidebar.success("Vineyard added.")
-            st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"Failed to add vineyard: {e}")
+    try:
+        get_or_create_vineyard_id(new_vineyard.strip())
+        st.sidebar.success("Vineyard added.")
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"Failed to add vineyard: {e}")
 
+# Delete vineyard
 with st.sidebar.expander("Delete a vineyard (only if unused)"):
-    if df_vineyards.empty or "id" not in df_vineyards.columns:
+    if df_vineyards.empty:
         st.sidebar.info("No vineyards yet.")
     else:
         id_to_name_v = dict(zip(df_vineyards["id"], df_vineyards["name"]))
         del_vid = st.sidebar.selectbox(
             "Select vineyard",
-            options=df_vineyards["id"].tolist(),
+            df_vineyards["id"].tolist(),
             format_func=lambda x: id_to_name_v.get(x, x),
-            key="delete_vineyard_select",
         )
         if st.sidebar.button("Delete selected vineyard"):
             try:
@@ -501,10 +361,12 @@ if selected_vineyard_name != "(All)" and not df_vineyards.empty:
     if not match.empty:
         selected_vineyard_id = match["id"].iloc[0]
 
-# -----------------------------------------------------------------------------
-# Add Transactions
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# ADD TRANSACTIONS
+# ------------------------------------------------------------
+
 st.subheader("Add entry")
+
 tab1, tab2 = st.tabs(["Payment / Transfer / Correction", "Monthly invoice (deduction)"])
 
 with tab1:
@@ -520,18 +382,21 @@ with tab1:
                 index=None if vineyard_names else None,
                 placeholder="Select vineyard" if vineyard_names else "Add a vineyard first",
             )
+
         with c2:
             payer = st.text_input(
                 "Payer *",
                 key=payer_key,
-                placeholder="e.g. Restaurant XYZ / Importer ABC"
+                placeholder="e.g. Restaurant XYZ / Importer ABC",
             )
+
         with c3:
             txn_date = st.date_input("Date *", value=date.today())
+
         with c4:
             kind_label = st.selectbox(
                 "Type *",
-                ["Payment received", "Transfer to vineyard", "Correction"]
+                ["Payment received", "Transfer to vineyard", "Correction"],
             )
             kind = LABEL_TO_KIND[kind_label]
 
@@ -543,21 +408,10 @@ with tab1:
         reference = st.text_input("Reference (optional)", placeholder="e.g. invoice # / bank ref")
         submitted_entry = st.form_submit_button("Add")
 
-    q = (st.session_state.get(payer_key) or "").strip().lower()
-    if q and all_payers:
-        matches = [p for p in all_payers if q in p.lower()][:8]
-        if matches:
-            st.caption("Suggestions (click to use):")
-            cols = st.columns(min(4, len(matches)))
-            for i, p in enumerate(matches):
-                if cols[i % len(cols)].button(p, key=f"{payer_key}_sugg_{i}"):
-                    st.session_state[payer_key] = p
-                    st.rerun()
-
     if submitted_entry:
         if not vineyard:
             st.error("Select a vineyard.")
-        elif not (st.session_state.get(payer_key) or "").strip():
+        elif not payer.strip():
             st.error("Payer is required.")
         elif float(amount) == 0:
             st.error("Amount must be non-zero.")
@@ -567,7 +421,7 @@ with tab1:
                 amt_cents = to_cents(float(amount))
                 if kind != "CORRECTION":
                     amt_cents = abs(amt_cents)
-                insert_transaction(vid, st.session_state[payer_key], txn_date, kind, amt_cents, reference)
+                insert_transaction(vid, payer, txn_date, kind, amt_cents, reference)
                 st.success("Added.")
                 st.rerun()
             except Exception as e:
@@ -583,15 +437,28 @@ with tab2:
                 options=vineyard_names,
                 index=None if vineyard_names else None,
                 placeholder="Select vineyard" if vineyard_names else "Add a vineyard first",
-                key="invoice_vineyard_select",
             )
-        with c2:
-            inv_date = st.date_input("Invoice date *", value=date.today())
-        with c3:
-            inv_ref = st.text_input("Invoice reference (optional)", placeholder="e.g. Jan 2026 storage / invoice #")
 
-        inv_amount = st.number_input("Invoice amount (deduct or credit) *", value=0.00, step=0.01, format="%.2f")
-        submitted_inv = st.form_submit_button("Add invoice deduction")
+        with c2:
+            inv_date = st.date_input("Document date *", value=date.today())
+
+        with c3:
+            inv_ref = st.text_input("Reference (optional)", placeholder="e.g. Jan 2026 / invoice # / credit note #")
+
+        doc_type = st.selectbox(
+            "Document type *",
+            ["Invoice deduction", "Credit note"],
+        )
+
+        inv_amount = st.number_input(
+            "Amount *",
+            min_value=0.00,
+            value=0.00,
+            step=0.01,
+            format="%.2f",
+        )
+
+        submitted_inv = st.form_submit_button("Add document")
 
     if submitted_inv:
         if not inv_vineyard:
@@ -601,23 +468,32 @@ with tab2:
         else:
             try:
                 vid = get_or_create_vineyard_id(inv_vineyard)
-                amt_cents = abs(to_cents(float(inv_amount)))
+
+                if doc_type == "Invoice deduction":
+                    kind = "INVOICE"
+                    payer = "(VINEYARD INVOICE)"
+                    amt_cents = abs(to_cents(float(inv_amount)))
+                else:
+                    kind = "CORRECTION"
+                    payer = "(CREDIT NOTE)"
+                    amt_cents = abs(to_cents(float(inv_amount)))   # positive correction = adds credit
+
                 insert_transaction(
                     vid,
-                    "(VINEYARD INVOICE)",
+                    payer,
                     inv_date,
-                    "INVOICE",
+                    kind,
                     amt_cents,
-                    inv_ref
+                    inv_ref,
                 )
-                st.success("Invoice deduction added.")
+                st.success(f"{doc_type} added.")
                 st.rerun()
             except Exception as e:
-                st.error(f"Failed to add invoice: {e}")
+                st.error(f"Failed to add document: {e}")
+# ------------------------------------------------------------
+# REFRESH / DERIVE
+# ------------------------------------------------------------
 
-# -----------------------------------------------------------------------------
-# Refresh / derive
-# -----------------------------------------------------------------------------
 df_vineyards = fetch_vineyards_df()
 df_tx_filtered = fetch_transactions_df(
     selected_vineyard_id,
@@ -625,13 +501,15 @@ df_tx_filtered = fetch_transactions_df(
 )
 df_aug = add_running_balance(df_tx_filtered, df_vineyards)
 
-# -----------------------------------------------------------------------------
-# Balances per vineyard
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# BALANCES PER VINEYARD
+# ------------------------------------------------------------
+
 st.markdown("---")
 st.subheader("Balances per vineyard")
 
 bal_df = balances_by_vineyard(df_aug)
+
 if bal_df.empty:
     st.info("No entries yet.")
 else:
@@ -639,10 +517,8 @@ else:
     view_bal["balance_num"] = view_bal["balance"].astype(float)
     total_credit = float(view_bal.loc[view_bal["balance_num"] > 0, "balance_num"].sum())
     total_owed = float(view_bal.loc[view_bal["balance_num"] < 0, "balance_num"].sum())
-
     view_bal["balance"] = view_bal["balance_num"].apply(lambda x: format_money(x, currency))
     view_bal = view_bal.drop(columns=["balance_num"])
-
     st.dataframe(view_bal, use_container_width=True, hide_index=True)
 
     c1, c2 = st.columns(2)
@@ -660,17 +536,51 @@ else:
     )
 
     st.markdown("### Full overview")
-    wb = vineyards_workbook_bytes(df_aug, currency_label=currency)
+    # workbook for all vineyards
+    wb_vineyards = io.BytesIO()
+    with pd.ExcelWriter(wb_vineyards, engine="openpyxl") as writer:
+        summary = balances_by_vineyard(df_aug).copy()
+        summary = summary.rename(columns={"balance": f"balance ({currency})"})
+        summary.to_excel(writer, index=False, sheet_name="Summary")
+        ws = writer.book["Summary"]
+        ws.freeze_panes = "A2"
+        autosize_worksheet(ws)
+
+        for vineyard, vdf in df_aug.groupby("vineyard"):
+            cols = ["txn_date", "payer", "reference", "type", "amount", "signed_amount", "balance_after"]
+            available_cols = [c for c in cols if c in vdf.columns]
+            sheet_df = vdf.sort_values(
+                [c for c in ["txn_date", "created_at"] if c in vdf.columns],
+                ascending=True
+            )[available_cols].copy()
+            sheet_df = sheet_df.rename(
+                columns={
+                    "txn_date": "date",
+                    "amount": f"amount ({currency})",
+                    "signed_amount": f"signed amount ({currency})",
+                    "balance_after": f"balance after ({currency})",
+                }
+            )
+            if "date" in sheet_df.columns:
+                sheet_df["date"] = sheet_df["date"].apply(format_date_eu)
+
+            safe_name = sanitize_excel_sheet_name(vineyard)
+            sheet_df.to_excel(writer, index=False, sheet_name=safe_name)
+            ws = writer.book[safe_name]
+            ws.freeze_panes = "A2"
+            autosize_worksheet(ws)
+
     st.download_button(
         "Download full overview (Excel)",
-        data=wb,
+        data=wb_vineyards.getvalue(),
         file_name="vineyard_statements_by_vineyard.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-# -----------------------------------------------------------------------------
-# Entries overview + export
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# ENTRIES OVERVIEW
+# ------------------------------------------------------------
+
 st.markdown("---")
 st.subheader("Entries")
 
@@ -678,7 +588,6 @@ if df_aug.empty:
     st.info("No entries to show.")
 else:
     view_df = df_aug.copy()
-
     if selected_vineyard_name != "(All)":
         view_df = view_df[view_df["vineyard"] == selected_vineyard_name]
     if selected_payer != "(All)":
@@ -698,20 +607,21 @@ else:
         lambda x: format_money(float(x), currency) if pd.notna(x) else ""
     )
     friendly = friendly.rename(columns={"balance_after": "balance after"})
-
     st.dataframe(friendly, use_container_width=True, hide_index=True)
 
     export_cols = ["id", "vineyard", "payer", "reference", "txn_date", "kind", "signed_amount", "balance_after"]
-    export_df = view_df[export_cols].copy()
-
     sort_cols = [c for c in ["vineyard", "txn_date", "created_at"] if c in view_df.columns]
-    export_df = export_df.sort_values(sort_cols, ascending=True)
 
+    # include sort columns first, then keep only final export columns after sorting
+    temp_cols = list(dict.fromkeys(export_cols + sort_cols))
+    export_df = view_df[temp_cols].copy()
+    export_df = export_df.sort_values(sort_cols, ascending=True)
+    export_df = export_df[export_cols]
     export_df["txn_date"] = export_df["txn_date"].apply(format_date_eu)
     export_df = export_df.rename(
         columns={
             "signed_amount": f"signed amount ({currency})",
-            "balance_after": f"balance after ({currency})"
+            "balance_after": f"balance after ({currency})",
         }
     )
 
@@ -730,9 +640,10 @@ else:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-# -----------------------------------------------------------------------------
-# Edit / delete
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# EDIT / DELETE
+# ------------------------------------------------------------
+
 st.markdown("---")
 st.subheader("Edit or delete an entry")
 
@@ -752,8 +663,8 @@ else:
             "Vineyard",
             options=vineyard_names,
             index=idx_v if idx_v is not None else None,
-            placeholder="Select vineyard" if vineyard_names else "Add a vineyard first",
         )
+
         e_payer = st.text_input("Payer", value=row["payer"])
         e_date = st.date_input("Date", value=pd.to_datetime(row["txn_date"]).date())
 
@@ -767,7 +678,7 @@ else:
                 "Amount (can be negative)",
                 value=float(row["amount"]),
                 step=0.01,
-                format="%.2f"
+                format="%.2f",
             )
         else:
             e_amount = st.number_input(
@@ -775,7 +686,7 @@ else:
                 min_value=0.00,
                 value=float(abs(row["amount"])),
                 step=0.01,
-                format="%.2f"
+                format="%.2f",
             )
 
         e_ref = st.text_input("Reference", value=row.get("reference") or "")
@@ -813,20 +724,19 @@ else:
         except Exception as e:
             st.error(f"Failed to delete: {e}")
 
-# -----------------------------------------------------------------------------
-# Import section
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------
+# IMPORT SECTION
+# ------------------------------------------------------------
+
 st.markdown("---")
 with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False):
     st.subheader("Import from Excel")
     imp_tab1, imp_tab2 = st.tabs([
         "Import opening balances (recommended)",
-        "Import transactions history (optional)"
+        "Import transactions history (optional)",
     ])
 
-    # -------------------------------------------------------------------------
     # Opening balances
-    # -------------------------------------------------------------------------
     with imp_tab1:
         st.caption(
             "Use this to switch from your current Excel balances. "
@@ -837,7 +747,7 @@ with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False
         bal_file = st.file_uploader(
             "Upload opening balances (.xlsx)",
             type=["xlsx"],
-            key="opening_balances_upload"
+            key="opening_balances_upload",
         )
 
         if bal_file:
@@ -845,28 +755,26 @@ with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False
             imp.columns = [c.strip().lower() for c in imp.columns]
 
             if not {"vineyard", "balance"}.issubset(set(imp.columns)):
-                st.error("Your Excel must contain columns: vineyard, balance")
+                st.error("Your Excel must contain: vineyard, balance")
             else:
                 imp["vineyard"] = imp["vineyard"].astype(str).str.strip()
                 imp["balance"] = pd.to_numeric(imp["balance"], errors="coerce")
-
                 bad = imp["balance"].isna().sum()
+
                 if bad:
-                    st.error(f"{bad} rows have an invalid balance amount. Fix and re-upload.")
+                    st.error(f"{bad} rows have an invalid balance.")
                 else:
                     st.write("Preview:")
                     st.dataframe(imp, use_container_width=True, hide_index=True)
                     total = float(imp["balance"].sum())
-                    st.info(f"Net total of balances: {format_money(total, currency)}")
+                    st.info(f"Net total: {format_money(total, currency)}")
 
                     if st.button("Import opening balances now"):
                         inserted = 0
                         skipped = 0
-
                         for _, r in imp.iterrows():
                             v = r["vineyard"].strip()
                             bal = float(r["balance"])
-
                             if not v or bal == 0:
                                 skipped += 1
                                 continue
@@ -876,33 +784,39 @@ with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False
                             txn_date = date.today().isoformat()
                             payer = "(OPENING BALANCE)"
                             reference = "Opening balance"
-                            row_hash = compute_row_hash(v, payer, txn_date, kind, amount_cents, reference)
+
+                            raw = f"{v}{payer}{txn_date}{kind}{amount_cents}{reference}".encode("utf-8")
+                            import_hash = hashlib.sha256(raw).hexdigest()
 
                             try:
                                 vid = get_or_create_vineyard_id(v)
-                                insert_transaction(vid, payer, txn_date, kind, amount_cents, reference, import_hash=row_hash)
+                                insert_transaction(
+                                    vid,
+                                    payer,
+                                    txn_date,
+                                    kind,
+                                    amount_cents,
+                                    reference,
+                                    import_hash=import_hash,
+                                )
                                 inserted += 1
                             except Exception:
                                 skipped += 1
 
-                        st.success(f"Imported opening balances: {inserted} inserted, {skipped} skipped.")
+                        st.success(f"Imported: {inserted}, skipped: {skipped}.")
                         st.rerun()
 
-    # -------------------------------------------------------------------------
-    # Transactions history
-    # -------------------------------------------------------------------------
+    # Transaction history
     with imp_tab2:
         st.caption(
-            "Import historical lines if you want full statements. "
-            "Required columns: vineyard, payer, date, type, amount. "
-            "Optional: reference. "
-            "Type must be PAYMENT / TRANSFER / INVOICE / CORRECTION."
+            "Import historical lines for full statements. "
+            "Required columns: vineyard, payer, date, type, amount."
         )
 
         tx_file = st.file_uploader(
             "Upload transactions history (.xlsx)",
             type=["xlsx"],
-            key="transactions_upload"
+            key="transactions_upload",
         )
 
         if tx_file:
@@ -911,35 +825,26 @@ with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False
 
             required = {"vineyard", "payer", "date", "type", "amount"}
             missing = required - set(imp.columns)
-
             if missing:
-                st.error(f"Missing required columns: {', '.join(sorted(missing))}")
+                st.error(f"Missing: {', '.join(sorted(missing))}")
             else:
                 if "reference" not in imp.columns:
                     imp["reference"] = ""
 
                 imp["vineyard"] = imp["vineyard"].astype(str).str.strip()
                 imp["payer"] = imp["payer"].astype(str).str.strip()
-                imp["type"] = imp["type"].astype(str).str.strip().str.upper()
+                imp["type"] = imp["type"].astype(str).strip().str.upper()
                 imp["amount"] = pd.to_numeric(imp["amount"], errors="coerce")
 
                 parsed_dates = pd.to_datetime(imp["date"], errors="coerce")
                 imp["date"] = parsed_dates.dt.date.astype(str)
 
                 valid_types = {"PAYMENT", "TRANSFER", "INVOICE", "CORRECTION"}
-
                 bad_dates = parsed_dates.isna().sum()
                 bad_amounts = imp["amount"].isna().sum()
                 bad_types = (~imp["type"].isin(valid_types)).sum()
                 missing_v = (imp["vineyard"].str.len() == 0).sum()
                 missing_p = (imp["payer"].str.len() == 0).sum()
-
-                non_positive_strict = (
-                    (imp["type"].isin(["PAYMENT", "TRANSFER", "INVOICE"])) & (imp["amount"] <= 0)
-                ).sum()
-                zero_corrections = (
-                    (imp["type"] == "CORRECTION") & (imp["amount"] == 0)
-                ).sum()
 
                 issues = []
                 if missing_v:
@@ -950,27 +855,22 @@ with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False
                     issues.append(f"{bad_dates} rows have invalid date")
                 if bad_amounts:
                     issues.append(f"{bad_amounts} rows have invalid amount")
-                if non_positive_strict:
-                    issues.append(f"{non_positive_strict} rows have amount <= 0 for PAYMENT/TRANSFER/INVOICE")
-                if zero_corrections:
-                    issues.append(f"{zero_corrections} rows have CORRECTION amount = 0")
                 if bad_types:
                     issues.append(f"{bad_types} rows have invalid type")
 
                 if issues:
-                    st.error("Fix these issues in Excel before importing:\n- " + "\n- ".join(issues))
+                    st.error("Fix these issues:\n- " + "\n- ".join(issues))
                 else:
                     prev = imp.copy()
                     prev["signed_amount"] = prev.apply(
                         lambda r: r["amount"] if r["type"] in ("PAYMENT", "CORRECTION") else -r["amount"],
-                        axis=1
+                        axis=1,
                     )
 
                     st.write("Preview (first 50 rows):")
                     st.dataframe(prev.head(50), use_container_width=True, hide_index=True)
-
                     st.info(
-                        "Import total impact: "
+                        "Import total: "
                         f"{format_money(float(prev['signed_amount'].sum()), currency)}"
                     )
 
@@ -992,17 +892,23 @@ with st.expander("⚙️ Import from Excel (admin / occasional)", expanded=False
                             if k != "CORRECTION":
                                 amt_cents = abs(amt_cents)
 
-                            row_hash = compute_row_hash(v, p, d, k, amt_cents, ref)
+                            raw = f"{v}{p}{d}{k}{amt_cents}{ref}".encode("utf-8")
+                            import_hash = hashlib.sha256(raw).hexdigest()
 
                             try:
                                 vid = get_or_create_vineyard_id(v)
-                                if skip_dupes:
-                                    insert_transaction(vid, p, d, k, amt_cents, ref, import_hash=row_hash)
-                                else:
-                                    insert_transaction(vid, p, d, k, amt_cents, ref, import_hash=None)
+                                insert_transaction(
+                                    vid,
+                                    p,
+                                    d,
+                                    k,
+                                    amt_cents,
+                                    ref,
+                                    import_hash=import_hash,
+                                )
                                 inserted += 1
                             except Exception:
                                 skipped += 1
 
-                        st.success(f"Imported {inserted} rows. Skipped {skipped}.")
+                        st.success(f"Imported: {inserted}, skipped: {skipped}.")
                         st.rerun()
