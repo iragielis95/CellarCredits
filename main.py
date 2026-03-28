@@ -215,7 +215,12 @@ def compute_row_hash(
 # -----------------------------------------------------------------------------
 def fetch_customers_df() -> pd.DataFrame:
     try:
-        res = supabase.table("customers").select("*").order("created_at", desc=False).execute()
+        res = (
+            supabase.table("customers")
+            .select("id, name, credits, created_at")
+            .order("created_at", desc=False)
+            .execute()
+        )
         return pd.DataFrame(res.data or [])
     except Exception as e:
         st.error(f"Failed to fetch customers: {e}")
