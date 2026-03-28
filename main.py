@@ -10,21 +10,19 @@ from openpyxl.utils import get_column_letter
 from supabase import create_client, Client
 import streamlit_authenticator as stauth
 
-import streamlit_authenticator as stauth
-
 names = ["Ira Gielis"]
 usernames = ["iragielis"]
-passwords = ["Toulouse@95"]   # plaintext (we will hash later)
+passwords = ["Toulouse@95"]  # plaintext temporarily
 
-# ✅ Correct hashing for current version of streamlit-authenticator
+# ✅ Hash each password individually (correct for latest versions)
 hashed_passwords = [stauth.Hasher().hash(p) for p in passwords]
 
 authenticator = stauth.Authenticate(
-    names,
-    usernames,
-    hashed_passwords,
-    "cellarcredits_cookie",   # cookie name
-    "abcdef123456",           # signature key
+    names=names,
+    usernames=usernames,
+    passwords=hashed_passwords,
+    cookie_name="cellarcredits_cookie",
+    key="abcdef123456",
     cookie_expiry_days=1
 )
 
@@ -39,7 +37,6 @@ elif auth_status == False:
 
 else:
     st.warning("Please enter your username and password")
-
 # -----------------------------------------------------------------------------
 # Streamlit Config
 # -----------------------------------------------------------------------------
