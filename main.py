@@ -17,10 +17,11 @@ DEBUG = False
 # ------------------------------------------------------------
 credentials = {
     "usernames": {
-        st.secrets["auth"]["username"]: {
-            "name": "Ira Gielis",
-            "password": st.secrets["auth"]["password"],
+        username: {
+            "name": user["name"],
+            "password": user["password"],
         }
+        for username, user in st.secrets["auth"]["users"].items()
     }
 }
 
@@ -536,12 +537,14 @@ else:
     )
 
     st.markdown("### Full overview")
+
     # workbook for all vineyards
     wb_vineyards = io.BytesIO()
     with pd.ExcelWriter(wb_vineyards, engine="openpyxl") as writer:
         summary = balances_by_vineyard(df_aug).copy()
         summary = summary.rename(columns={"balance": f"balance ({currency})"})
         summary.to_excel(writer, index=False, sheet_name="Summary")
+
         ws = writer.book["Summary"]
         ws.freeze_panes = "A2"
         autosize_worksheet(ws)
@@ -549,10 +552,12 @@ else:
         for vineyard, vdf in df_aug.groupby("vineyard"):
             cols = ["txn_date", "payer", "reference", "type", "amount", "signed_amount", "balance_after"]
             available_cols = [c for c in cols if c in vdf.columns]
+
             sheet_df = vdf.sort_values(
                 [c for c in ["txn_date", "created_at"] if c in vdf.columns],
                 ascending=True
             )[available_cols].copy()
+
             sheet_df = sheet_df.rename(
                 columns={
                     "txn_date": "date",
@@ -561,14 +566,19 @@ else:
                     "balance_after": f"balance after ({currency})",
                 }
             )
+
             if "date" in sheet_df.columns:
                 sheet_df["date"] = sheet_df["date"].apply(format_date_eu)
 
             safe_name = sanitize_excel_sheet_name(vineyard)
             sheet_df.to_excel(writer, index=False, sheet_name=safe_name)
+
             ws = writer.book[safe_name]
             ws.freeze_panes = "A2"
             autosize_worksheet(ws)
+
+    # ✅ CRITICAL: finalize buffer before downloading
+    wb_vineyards.seek(0)
 
     st.download_button(
         "Download full overview (Excel)",
