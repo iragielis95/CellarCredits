@@ -62,6 +62,10 @@ if auth_status is None:
     st.warning("Please log in")
     st.stop()
 
+# ✅ SOFT REFRESH HANDLER (Azure-safe replacement for st.rerun)
+if st.session_state.pop("_refresh", False):
+    pass  # allow Streamlit's normal rerun, do nothing explicitly
+
 # ------------------------------------------------------------
 # ✅ AFTER SUCCESSFUL LOGIN
 # ------------------------------------------------------------
@@ -333,7 +337,7 @@ if st.sidebar.button("Add vineyard"):
     try:
         get_or_create_vineyard_id(new_vineyard.strip())
         st.sidebar.success("Vineyard added.")
-        st.rerun()
+        st.session_state["_refresh"] = True
     except Exception as e:
         st.sidebar.error(f"Failed to add vineyard: {e}")
 
@@ -352,7 +356,7 @@ with st.sidebar.expander("Delete a vineyard (only if unused)"):
             try:
                 delete_vineyard_by_id(del_vid)
                 st.sidebar.success("Deleted from dropdown list.")
-                st.rerun()
+                st.session_state["_refresh"] = True
             except Exception as e:
                 st.sidebar.error(str(e))
 
